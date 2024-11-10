@@ -13,6 +13,9 @@ section .data
 
 section .text
 _start:
+    push rbp
+    mov rbp, rsp
+
     push greeting
     call .print
     pop rbp
@@ -24,7 +27,9 @@ _start:
 
     push newline
     call .print
+
     pop rbp
+    ret
 
 .exit:
     mov rax, SYS_exit
@@ -32,9 +37,12 @@ _start:
     syscall
 
 .print:
-    mov rsi, [rsp + 8] ; Last value
-    mov rdx, 0
+    push rbp
+    mov rbp, rsp
+
+    mov rsi, [rbp + 16] ; Last value
     mov r9, rsi
+    mov rdx, 0
 .calculate_size:
     inc rdx
     inc r9
@@ -45,4 +53,6 @@ _start:
     mov rdi, STDOUT
     mov rax, SYS_write
     syscall
+    
+    pop rbp
     ret
