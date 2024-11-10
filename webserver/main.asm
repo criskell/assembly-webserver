@@ -13,8 +13,8 @@ section .data
 
 section .text
 _start:
-    push rbp
-    mov rbp, rsp
+    push rbp ; rbp é âncora da base da nova pilha
+    mov rbp, rsp ; cria uma nova pilha
 
     push greeting
     call .print
