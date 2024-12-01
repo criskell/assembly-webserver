@@ -9,6 +9,8 @@ global _start
 %define SYS_close 3
 %define SYS_exit 60
 
+%define SYS_nanosleep 35
+
 %define AF_INET 2
 %define SOCK_STREAM 1
 %define SOCK_PROTOCOL 0
@@ -53,6 +55,10 @@ http_response:
     content_length: db "Content-Length: 22", CR, LF
     clrf: db CR, LF
     body: db "<h1>Hello, World!</h1>"
+
+sleep_timespec:
+    tv_sec: dq 1
+    tv_nsec: dq 0
 
 ; $ -> current address, that is, the memory location where the code is currently located.
 ; calculate the difference
@@ -117,6 +123,11 @@ _start:
     call .write
     call .close
     jmp .accept
+
+handle:
+    lea rdi, [sleep_timespec]
+    mov rax, SYS_nanosleep
+    syscall
 
 ; int write(int fd, buffer* bf, int bfLen)
 .write:
