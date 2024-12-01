@@ -10,6 +10,8 @@ global _start
 %define SYS_exit 60
 
 %define SYS_nanosleep 35
+%define SYS_fork 57
+%define SYS_clone 56
 
 %define AF_INET 2
 %define SOCK_STREAM 1
@@ -118,10 +120,16 @@ _start:
     mov rdx, 0
     mov r10, 0
     syscall
-
     mov r8, rax
-    call .write
-    call .close
+
+    mov rax, SYS_clone
+    mov rdi, 0
+    mov rsi, 0
+    syscall
+
+    test rax, rax
+    jz handle
+
     jmp .accept
 
 handle:
