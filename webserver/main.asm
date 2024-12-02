@@ -13,6 +13,11 @@ global _start
 %define SYS_fork 57
 %define SYS_clone 56
 %define SYS_brk 12
+%define SYS_futex 202
+
+%define FUTEX_WAIT 0
+%define FUTEX_WAKE 1
+%define FUTEX_PRIVATE_FLAG 128
 
 %define CHILD_STACK_SIZE 4096
 %define CLONE_VM 0x00000100
@@ -44,8 +49,9 @@ global _start
 ; It is different from the .data section as it is initialized with some explicit value.
 ; Zero-filled.
 section .bss
-socket_file_descriptor: resb 1
+socket_file_descriptor: resb 8
 queue: resb 8
+condvar: resb 8
 
 section .data
 socket_address:
@@ -88,7 +94,14 @@ queuePtr: db 0
 section .text
 
 _start:
+.initialize_pool:
+    mov r8, 0
+.pool:
     call make_thread
+    inc r8
+    cmp r8, 5
+    je .socket
+    jmp .pool
 
 ; Creates a socket, an operating system abstraction for inter-process communication.
 ; int socket(int domain, int type, int protocol)
@@ -148,6 +161,21 @@ enqueue:
     inc byte [queuePtr]
     ret
 
+    call emit_signal
+    ret
+
+emit_signal:
+    mov rdi, condvar
+    mov rsi, FUTEX_WAKE | FUTEX_PRIVATE_FLAG
+
+    xor rdx, rdx
+    xor r10, r10
+    xor r8, r8
+
+    mov rax, SYS_futex
+    syscall
+    ret
+
 make_thread:
     mov rax, SYS_brk
     mov rdi, 0
@@ -168,13 +196,12 @@ make_thread:
     ret
 
 handle:
-
 .next_socket_descriptor:
     cmp byte [queuePtr], 0
-    je handle ; empty queue
+    je .wait ; empty queue
 
     call dequeue
-    mov r8, rax
+    mov r10, rax
 
 .sleep:
     lea rdi, [sleep_timespec]
@@ -184,19 +211,37 @@ handle:
 ; int write(int fd, buffer* bf, int bfLen)
 .write:
     mov rax, SYS_write
-    mov rdi, r8 ; client socket file descriptor
+    mov rdi, r10 ; client socket file descriptor
     mov rsi, http_response
     mov rdx, http_response_length
     syscall
 
 ; int close(int fd)
 .close:
-    mov rdi, r8
+    mov rdi, r10
     mov rax, SYS_close
     syscall
 
 .return:
     jmp handle
+
+.wait:
+    call wait_condvar
+    jmp handle
+
+wait_condvar:
+    mov rdi, condvar
+    mov rsi, FUTEX_WAIT | FUTEX_PRIVATE_FLAG
+    xor rdx, rdx
+    xor r10, r10
+    xor r8, r8
+    mov rax, SYS_futex
+    syscall
+    test rax, rax
+    jz .done_condvar
+
+.done_condvar:
+    ret
 
 dequeue:
     xor rax, rax
