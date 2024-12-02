@@ -46,6 +46,7 @@ global _start
 %define LF 0xA
 
 %define BACKLOG 2
+%define QUEUE_OFFSET_CAPACITY 5
 
 ; This section stores uninitialized data.
 ; It does not take up space in the program size.
@@ -55,7 +56,7 @@ global _start
 ; It is different from the .data section as it is initialized with some explicit value.
 ; Zero-filled.
 section .bss
-queue: resb 100
+queue: resb 4
 socket_file_descriptor: resb 8
 
 section .data
@@ -95,6 +96,7 @@ http_response_length: equ $ - http_response
 ; %define does not have access to dynamic address calculation.
 
 queuePtr: db 0
+queueSize: db QUEUE_OFFSET_CAPACITY
 
 align 4
 condvar: dd 0
@@ -103,14 +105,25 @@ section .text
 
 _start:
 
-.initialize_pool:
+.initialize_queue:
+    mov rax, SYS_brk
+    mov rdi, 0
+    syscall
+
+    mov [queue], rax
+    mov rdi, rax
+    add rdi, QUEUE_OFFSET_CAPACITY
+    mov rax, SYS_brk
+    syscall
+
+.initialize_thread_pool:
     mov r8, 0
-.pool:
+.thread_pool:
     call make_thread
     inc r8
     cmp r8, 5
     je .socket
-    jmp .pool
+    jmp .thread_pool
 
 ; Creates a socket, an operating system abstraction for inter-process communication.
 ; int socket(int domain, int type, int protocol)
@@ -162,20 +175,6 @@ _start:
     call enqueue
 
     jmp .accept
-
-enqueue:
-    xor rdx, rdx
-    mov dl, [queuePtr]
-    mov [queue + rdx], r8
-    inc byte [queuePtr]
-
-    mov rax, [queuePtr]
-    and rax, 99
-    jnz .full
-
-    call emit_signal
-.full:
-    ret
 
 emit_signal:
     mov rax, SYS_futex
@@ -261,29 +260,62 @@ wait_condvar:
 .done_condvar:
     ret
 
+
+enqueue:
+    mov r9, [queueSize]
+    cmp dword [queuePtr], r9d
+    je .resize_queue
+
+    xor rdx, rdx
+    mov edx, [queuePtr]
+    mov [queue + rdx], r8
+    inc dword [queuePtr]
+
+.done_enqueue:
+    call emit_signal
+    ret
+
+.resize_queue:
+    mov r10, r8
+
+    mov rdi, 0
+    mov rax, SYS_brk
+    syscall
+
+    mov rdi, rax
+    add rdi, QUEUE_OFFSET_CAPACITY * 4
+    mov rax, SYS_brk
+    syscall
+
+    mov r9, [queueSize]
+    add r9, QUEUE_OFFSET_CAPACITY
+    mov [queueSize], r9
+
+    mov rdi, r10
+    jmp enqueue
+
 dequeue:
     xor rax, rax
-    xor rsi, rsi
 
-    mov al, [queue]
-    mov rcx, 0
+    mov eax, [queue]
+    xor rcx, rcx
 
 .loop_dequeue:
-    cmp byte [queuePtr], 0
+    cmp dword [queuePtr], 0
     je .return_dequeue
 
     cmp cl, [queuePtr]
     je .done_dequeue
 
     xor r10, r10
-    mov r10b, [queue + rcx + 1]
-    mov byte [queue + rcx], r10b
+    mov r10d, [queue + rcx + 1]
+    mov dword [queue + rcx], r10d
 
     inc rcx
     jmp .loop_dequeue
 
 .done_dequeue:
-    dec byte [queuePtr]
+    dec dword [queuePtr]
     
 .return_dequeue:
     ret
