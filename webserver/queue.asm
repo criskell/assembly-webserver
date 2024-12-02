@@ -49,6 +49,11 @@ _start:
 	mov r8, 7
 	call enqueue
 
+    call dequeue
+
+    ; mov r8, 8
+    ; call enqueue
+
 .exit:
     mov rax, SYS_exit
     mov rdi, EXIT_SUCCESS
@@ -82,26 +87,25 @@ enqueue:
 
 dequeue:
     xor rax, rax
+    xor rsi, rsi
 
     mov eax, [queue]
-    xor rcx, rcx
 
 .loop_dequeue:
-    cmp dword [queuePtr], 0
-    je .return_dequeue
+    cmp esi, [queuePtr]
+    je .done_dequeue ; empty queue
 
-    cmp cl, [queuePtr]
+    cmp dword [queuePtr], 0
     je .done_dequeue
 
     xor r10, r10
-    mov r10d, [queue + rcx + 1]
-    mov dword [queue + rcx], r10d
+    mov r11, [queue]
+    mov r10d, [r11 + (rsi + 1) * 4]
+    mov [r11 + rsi * 4], r10
 
-    inc rcx
+    inc rsi
+    sub dword [queuePtr], 4
     jmp .loop_dequeue
 
 .done_dequeue:
-    dec dword [queuePtr]
-    
-.return_dequeue:
     ret
