@@ -100,10 +100,10 @@ dequeue:
 
     xor r10, r10
     mov r11, [queue]
-    mov r10d, [r11 + (rsi + 1) * 4]
-    mov [r11 + rsi * 4], r10
+    mov r10d, [r11 + rsi + 4]
+    mov [r11 + rsi], r10
 
-    inc rsi
+    add rsi, 4
     sub dword [queuePtr], 4
     jmp .loop_dequeue
 
