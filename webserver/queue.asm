@@ -91,6 +91,8 @@ dequeue:
 
     mov eax, [queue]
 
+    push qword [queuePtr]
+
 .loop_dequeue:
     cmp esi, [queuePtr]
     je .done_dequeue ; empty queue
@@ -108,4 +110,6 @@ dequeue:
     jmp .loop_dequeue
 
 .done_dequeue:
+    pop qword [queuePtr]
+    sub dword [queuePtr], 4
     ret
