@@ -95,7 +95,9 @@ http_response_length: equ $ - http_response
 ; %define does not have access to dynamic address calculation.
 
 queuePtr: db 0
-condvar: dq 0
+
+align 4
+condvar: dd 0
 
 section .text
 
@@ -176,9 +178,10 @@ emit_signal:
     mov rdi, condvar
     mov rsi, FUTEX_WAKE | FUTEX_PRIVATE_FLAG
 
-    mov rdx, 0
+    xor rdx, rdx
     xor r10, r10
     xor r8, r8
+    xor r9, r9
 
     syscall
     ret
