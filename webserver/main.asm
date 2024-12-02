@@ -14,11 +14,17 @@ global _start
 %define SYS_clone 56
 %define SYS_brk 12
 %define SYS_futex 202
+%define SYS_mmap 9
 
 %define FUTEX_WAIT 0
 %define FUTEX_WAKE 1
 %define FUTEX_PRIVATE_FLAG 128
 
+%define PROT_WRITE 0x2
+%define PROT_READ 0x1
+%define MAP_GROWSDOWN 0x100
+%define MAP_ANONYMOUS 0x0020
+%define MAP_PRIVATE 0x0002
 %define CHILD_STACK_SIZE 4096
 %define CLONE_VM 0x00000100
 %define CLONE_FS 0x00000200
@@ -49,9 +55,9 @@ global _start
 ; It is different from the .data section as it is initialized with some explicit value.
 ; Zero-filled.
 section .bss
-socket_file_descriptor: resb 8
 queue: resb 8
 condvar: resb 8
+socket_file_descriptor: resb 1
 
 section .data
 socket_address:
@@ -177,15 +183,11 @@ emit_signal:
     ret
 
 make_thread:
-    mov rax, SYS_brk
-    mov rdi, 0
-    syscall
-    mov rdx, rax
-
-    mov rdi, rax
-    mov rax, SYS_brk
-    ; Updates the program break to a new position.
-    add rdi, CHILD_STACK_SIZE
+    mov rax, SYS_mmap
+    mov rdi, 0x0
+    mov rsi, CHILD_STACK_SIZE
+    mov rdx, PROT_WRITE | PROT_READ
+    mov r10, MAP_ANONYMOUS | MAP_PRIVATE | MAP_GROWSDOWN
     syscall
 
     mov rdi, CLONE_VM|CLONE_FS|CLONE_FILES|CLONE_SIGHAND|CLONE_PARENT|CLONE_THREAD|CLONE_IO
