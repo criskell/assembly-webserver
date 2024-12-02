@@ -13,6 +13,18 @@ global _start
 %define SYS_fork 57
 %define SYS_clone 56
 
+%define CLONE_VM 0x00000100
+%define CLONE_FS 0x00000200
+%define CLONE_FILES 0x00000400
+%define CLONE_PARENT 0x00008000
+%define CLONE_THREAD 0x00010000
+%define CLONE_IO 0x80000000
+%define CLONE_SIGHAND 0x00000800
+
+%define SYS_brk 12
+
+%define CHILD_STACK_SIZE 4096
+
 %define AF_INET 2
 %define SOCK_STREAM 1
 %define SOCK_PROTOCOL 0
@@ -122,17 +134,30 @@ _start:
     syscall
     mov r8, rax
 
-    mov rax, SYS_clone
-    mov rdi, 0
-    mov rsi, 0
-    syscall
-
-    test rax, rax
-    jz handle
+    call make_thread
 
     jmp .accept
 
+make_thread:
+    mov rax, SYS_brk
+    mov rdi, 0
+    syscall
+    mov rdx, rax
+
+    mov rdi, rax
+    mov rax, SYS_brk
+    add rdi, CHILD_STACK_SIZE
+    syscall
+
+    mov rdi, CLONE_VM|CLONE_FS|CLONE_FILES|CLONE_SIGHAND|CLONE_PARENT|CLONE_THREAD|CLONE_IO
+    lea rsi, [rdx + CHILD_STACK_SIZE - 8]
+    mov qword [rsi], handle
+    mov rax, SYS_clone
+    syscall
+    ret
+
 handle:
+.sleep:
     lea rdi, [sleep_timespec]
     mov rax, SYS_nanosleep
     syscall
@@ -144,14 +169,12 @@ handle:
     mov rsi, http_response
     mov rdx, http_response_length
     syscall
-    ret
 
 ; int close(int fd)
 .close:
     mov rdi, r8
     mov rax, SYS_close
     syscall
-    ret
 
 .exit:
     mov rax, SYS_exit
