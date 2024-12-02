@@ -2,7 +2,7 @@ global _start
 
 %define SYS_socket 41
 %define SYS_listen 50
-%define SYS_accept 288
+%define SYS_accept4 288
 %define SYS_bind 49
 
 %define SYS_write 1
@@ -12,7 +12,9 @@ global _start
 %define SYS_nanosleep 35
 %define SYS_fork 57
 %define SYS_clone 56
+%define SYS_brk 12
 
+%define CHILD_STACK_SIZE 4096
 %define CLONE_VM 0x00000100
 %define CLONE_FS 0x00000200
 %define CLONE_FILES 0x00000400
@@ -20,10 +22,6 @@ global _start
 %define CLONE_THREAD 0x00010000
 %define CLONE_IO 0x80000000
 %define CLONE_SIGHAND 0x00000800
-
-%define SYS_brk 12
-
-%define CHILD_STACK_SIZE 4096
 
 %define AF_INET 2
 %define SOCK_STREAM 1
@@ -36,7 +34,7 @@ global _start
 %define CR 0xD
 %define LF 0xA
 
-%define CONNECTIONS_BACKLOG 2
+%define BACKLOG 2
 
 ; This section stores uninitialized data.
 ; It does not take up space in the program size.
@@ -47,6 +45,7 @@ global _start
 ; Zero-filled.
 section .bss
 socket_file_descriptor: resb 1
+queue: resb 8
 
 section .data
 socket_address:
@@ -84,8 +83,12 @@ http_response_length: equ $ - http_response
 ; The difference between equ and define is that define is defined before assembling the code (pre-processing step) and equ is defined during assembling the code.
 ; %define does not have access to dynamic address calculation.
 
+queuePtr: db 0
+
 section .text
+
 _start:
+    call make_thread
 
 ; Creates a socket, an operating system abstraction for inter-process communication.
 ; int socket(int domain, int type, int protocol)
@@ -121,22 +124,29 @@ _start:
     mov rax, SYS_listen
     mov rdi, [socket_file_descriptor]
     ; Maximum number of connections that can be queued before being passed to accept.
-    mov rsi, CONNECTIONS_BACKLOG
+    mov rsi, BACKLOG
     syscall
 
 ; int accept(int sockfd, struct* addr, int addrlen, int flags)
 .accept:
-    mov rax, SYS_accept
+    mov rax, SYS_accept4
     mov rdi, [socket_file_descriptor]
     mov rsi, 0
     mov rdx, 0
     mov r10, 0
     syscall
-    mov r8, rax
 
-    call make_thread
+    mov r8, rax
+    call enqueue
 
     jmp .accept
+
+enqueue:
+    xor rdx, rdx
+    mov dl, [queuePtr]
+    mov [queue + rdx], r8
+    inc byte [queuePtr]
+    ret
 
 make_thread:
     mov rax, SYS_brk
@@ -146,6 +156,7 @@ make_thread:
 
     mov rdi, rax
     mov rax, SYS_brk
+    ; Updates the program break to a new position.
     add rdi, CHILD_STACK_SIZE
     syscall
 
@@ -157,6 +168,14 @@ make_thread:
     ret
 
 handle:
+
+.next_socket_descriptor:
+    cmp byte [queuePtr], 0
+    je handle ; empty queue
+
+    call dequeue
+    mov r8, rax
+
 .sleep:
     lea rdi, [sleep_timespec]
     mov rax, SYS_nanosleep
@@ -176,7 +195,32 @@ handle:
     mov rax, SYS_close
     syscall
 
-.exit:
-    mov rax, SYS_exit
-    mov rdi, EXIT_SUCCESSFUL_STATUS
-    syscall
+.return:
+    jmp handle
+
+dequeue:
+    xor rax, rax
+    xor rsi, rsi
+
+    mov al, [queue]
+    mov rcx, 0
+
+.loop_dequeue:
+    cmp byte [queuePtr], 0
+    je .return_dequeue
+
+    cmp cl, [queuePtr]
+    je .done_dequeue
+
+    xor r10, r10
+    mov r10b, [queue + rcx + 1]
+    mov byte [queue + rcx], r10b
+
+    inc rcx
+    jmp .loop_dequeue
+
+.done_dequeue:
+    dec byte [queuePtr]
+    
+.return_dequeue:
+    ret
