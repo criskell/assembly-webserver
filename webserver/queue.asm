@@ -12,7 +12,7 @@ queue: resd 1
 
 section .data
 queuePtr: dd 0
-queueSize: db CAPACITY * 4
+queueCapacity: db CAPACITY * 4
 
 section .text
 _start:
@@ -60,7 +60,7 @@ _start:
     syscall
 
 enqueue:
-    mov r9, [queueSize]
+    mov r9, [queueCapacity]
     cmp dword [queuePtr], r9d
     je .resize_queue
 
@@ -81,7 +81,7 @@ enqueue:
     mov rax, SYS_brk
     syscall
 
-    mov r10, queueSize
+    mov r10, queueCapacity
     add dword [r10], CAPACITY * 4
     jmp enqueue
 

@@ -46,7 +46,7 @@ global _start
 %define LF 0xA
 
 %define BACKLOG 2
-%define QUEUE_OFFSET_CAPACITY 5
+%define CAPACITY 5
 
 ; This section stores uninitialized data.
 ; It does not take up space in the program size.
@@ -56,10 +56,13 @@ global _start
 ; It is different from the .data section as it is initialized with some explicit value.
 ; Zero-filled.
 section .bss
-queue: resb 4
 socket_file_descriptor: resb 8
+queue: resd 1
 
 section .data
+queuePtr: dd 0
+queueCapacity: db CAPACITY * 4
+
 socket_address:
     ; Define Word, 2 bytes - Address family.
     family: dw AF_INET
@@ -95,9 +98,6 @@ http_response_length: equ $ - http_response
 ; The difference between equ and define is that define is defined before assembling the code (pre-processing step) and equ is defined during assembling the code.
 ; %define does not have access to dynamic address calculation.
 
-queuePtr: db 0
-queueSize: db QUEUE_OFFSET_CAPACITY
-
 align 4
 condvar: dd 0
 
@@ -106,15 +106,15 @@ section .text
 _start:
 
 .initialize_queue:
-    mov rax, SYS_brk
-    mov rdi, 0
-    syscall
+	mov rdi, 0
+	mov rax, SYS_brk
+	syscall
+	mov [queue], rax
 
-    mov [queue], rax
-    mov rdi, rax
-    add rdi, QUEUE_OFFSET_CAPACITY
-    mov rax, SYS_brk
-    syscall
+	mov rdi, rax
+	add rdi, CAPACITY * 4
+	mov rax, SYS_brk
+	syscall
 
 .initialize_thread_pool:
     mov r8, 0
@@ -260,62 +260,60 @@ wait_condvar:
 .done_condvar:
     ret
 
-
 enqueue:
-    mov r9, [queueSize]
+    mov r9, [queueCapacity]
     cmp dword [queuePtr], r9d
     je .resize_queue
 
-    xor rdx, rdx
-    mov edx, [queuePtr]
-    mov [queue + rdx], r8
-    inc dword [queuePtr]
+    mov esi, [queuePtr]
+    mov rbx, [queue]
+    mov dword [rbx + rsi], r8d
+    add dword [queuePtr], 4
 
 .done_enqueue:
     call emit_signal
     ret
 
 .resize_queue:
-    mov r10, r8
-
     mov rdi, 0
     mov rax, SYS_brk
     syscall
 
     mov rdi, rax
-    add rdi, QUEUE_OFFSET_CAPACITY * 4
+    add rdi, CAPACITY * 4
     mov rax, SYS_brk
     syscall
 
-    mov r9, [queueSize]
-    add r9, QUEUE_OFFSET_CAPACITY
-    mov [queueSize], r9
-
-    mov rdi, r10
+    mov r10, queueCapacity
+    add dword [r10], CAPACITY * 4
     jmp enqueue
 
 dequeue:
     xor rax, rax
+    xor rsi, rsi
 
-    mov eax, [queue]
-    xor rcx, rcx
+    mov rax, [queue]
+    mov rax, [rax]
+
+    push qword [queuePtr]
 
 .loop_dequeue:
-    cmp dword [queuePtr], 0
-    je .return_dequeue
+    cmp esi, [queuePtr]
+    je .done_dequeue ; empty queue
 
-    cmp cl, [queuePtr]
+    cmp dword [queuePtr], 0
     je .done_dequeue
 
     xor r10, r10
-    mov r10d, [queue + rcx + 1]
-    mov dword [queue + rcx], r10d
+    mov r11, [queue]
+    mov r10d, [r11 + rsi + 4]
+    mov [r11 + rsi], r10
 
-    inc rcx
+    add rsi, 4
+    sub dword [queuePtr], 4
     jmp .loop_dequeue
 
 .done_dequeue:
-    dec dword [queuePtr]
-    
-.return_dequeue:
+    pop qword [queuePtr]
+    sub dword [queuePtr], 4
     ret
