@@ -25,7 +25,7 @@ global _start
 %define MAP_GROWSDOWN 0x100
 %define MAP_ANONYMOUS 0x0020
 %define MAP_PRIVATE 0x0002
-%define CHILD_STACK_SIZE 4096
+%define CHILD_STACK_SIZE (4096 * 1024)
 %define CLONE_VM 0x00000100
 %define CLONE_FS 0x00000200
 %define CLONE_FILES 0x00000400
@@ -56,8 +56,7 @@ global _start
 ; Zero-filled.
 section .bss
 queue: resb 8
-condvar: resb 8
-socket_file_descriptor: resb 1
+socket_file_descriptor: resb 8
 
 section .data
 socket_address:
@@ -96,10 +95,12 @@ http_response_length: equ $ - http_response
 ; %define does not have access to dynamic address calculation.
 
 queuePtr: db 0
+condvar: dq 0
 
 section .text
 
 _start:
+
 .initialize_pool:
     mov r8, 0
 .pool:
@@ -165,20 +166,20 @@ enqueue:
     mov dl, [queuePtr]
     mov [queue + rdx], r8
     inc byte [queuePtr]
-    ret
 
     call emit_signal
     ret
 
 emit_signal:
+    mov rax, SYS_futex
+    
     mov rdi, condvar
     mov rsi, FUTEX_WAKE | FUTEX_PRIVATE_FLAG
 
-    xor rdx, rdx
+    mov rdx, 0
     xor r10, r10
     xor r8, r8
 
-    mov rax, SYS_futex
     syscall
     ret
 
@@ -191,7 +192,7 @@ make_thread:
     syscall
 
     mov rdi, CLONE_VM|CLONE_FS|CLONE_FILES|CLONE_SIGHAND|CLONE_PARENT|CLONE_THREAD|CLONE_IO
-    lea rsi, [rdx + CHILD_STACK_SIZE - 8]
+    lea rsi, [rax + CHILD_STACK_SIZE - 8]
     mov qword [rsi], handle
     mov rax, SYS_clone
     syscall
@@ -204,7 +205,14 @@ handle:
 
     call dequeue
     mov r10, rax
+    call action
+    jmp handle
 
+.wait:
+    call wait_condvar
+    jmp handle
+
+action:
 .sleep:
     lea rdi, [sleep_timespec]
     mov rax, SYS_nanosleep
@@ -227,17 +235,16 @@ handle:
 .return:
     jmp handle
 
-.wait:
-    call wait_condvar
-    jmp handle
-
 wait_condvar:
+    mov rax, SYS_futex
+
     mov rdi, condvar
     mov rsi, FUTEX_WAIT | FUTEX_PRIVATE_FLAG
+    
     xor rdx, rdx
     xor r10, r10
     xor r8, r8
-    mov rax, SYS_futex
+
     syscall
     test rax, rax
     jz .done_condvar
