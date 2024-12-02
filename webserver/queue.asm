@@ -51,8 +51,8 @@ _start:
 
     call dequeue
 
-    ; mov r8, 8
-    ; call enqueue
+    mov r8, 8
+    call enqueue
 
 .exit:
     mov rax, SYS_exit
