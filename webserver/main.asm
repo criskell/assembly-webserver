@@ -55,7 +55,7 @@ global _start
 ; It is different from the .data section as it is initialized with some explicit value.
 ; Zero-filled.
 section .bss
-queue: resb 8
+queue: resb 100
 socket_file_descriptor: resb 8
 
 section .data
@@ -169,7 +169,12 @@ enqueue:
     mov [queue + rdx], r8
     inc byte [queuePtr]
 
+    mov rax, [queuePtr]
+    and rax, 99
+    jnz .full
+
     call emit_signal
+.full:
     ret
 
 emit_signal:
