@@ -45,8 +45,8 @@ global _start
 %define CR 0xD
 %define LF 0xA
 
-%define BACKLOG 2
-%define CAPACITY 5
+%define BACKLOG 10000000
+%define CAPACITY 100
 
 ; This section stores uninitialized data.
 ; It does not take up space in the program size.
@@ -207,7 +207,7 @@ make_thread:
 
 handle:
 .next_socket_descriptor:
-    cmp byte [queuePtr], 0
+    cmp dword [queuePtr], 0
     je .wait ; empty queue
 
     call dequeue
@@ -295,25 +295,22 @@ dequeue:
     mov rax, [queue]
     mov rax, [rax]
 
-    push qword [queuePtr]
+    mov r12d, dword [queuePtr]
+    sub r12d, 4
 
 .loop_dequeue:
-    cmp esi, [queuePtr]
-    je .done_dequeue ; empty queue
-
     cmp dword [queuePtr], 0
     je .done_dequeue
 
     xor r10, r10
     mov r11, [queue]
     mov r10d, [r11 + rsi + 4]
-    mov [r11 + rsi], r10
+    mov dword [r11 + rsi], r10d
 
     add rsi, 4
     sub dword [queuePtr], 4
     jmp .loop_dequeue
 
 .done_dequeue:
-    pop qword [queuePtr]
-    sub dword [queuePtr], 4
+    mov dword [queuePtr], r12d
     ret
