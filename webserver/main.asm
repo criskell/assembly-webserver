@@ -85,7 +85,7 @@ http_response:
     body: db "<h1>Hello, World!</h1>"
 
 sleep_timespec:
-    tv_sec: dq 1
+    tv_sec: dq 0 ; set sleep here
     tv_nsec: dq 0
 
 ; $ -> current address, that is, the memory location where the code is currently located.
