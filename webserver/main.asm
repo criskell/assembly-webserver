@@ -46,7 +46,7 @@ global _start
 %define LF 0xA
 
 %define BACKLOG 10000000
-%define CAPACITY 100
+%define CAPACITY 5
 
 ; This section stores uninitialized data.
 ; It does not take up space in the program size.
